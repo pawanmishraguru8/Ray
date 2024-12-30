@@ -1,0 +1,12 @@
+[submodule "eigen"]
+	path = eigen
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "libigl"]
+	path = libigl
+	url = https://github.com/libigl/libigl.git
+[submodule "bvh"]
+	path = bvh
+	url = https://github.com/madmann91/bvh.git
+[submodule "pycork"]
+	path = pycork
+	url = https://github.com/Ishan-Sahu-01/pycork.git
