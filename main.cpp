@@ -7,6 +7,8 @@
 #include <set>
 #include <stack>
 #include <unordered_map>
+#include <embree3/rtcore.h>
+#include <embree3/rtcore_ray.h>
 
 // Define the point structure for 3D points
 struct Point {
@@ -252,70 +254,136 @@ void writeSTLBinary(const std::string& filename, const std::map<int, Triangle>& 
 }
 
 
-// Ray-Triangle Intersection Function
-bool rayIntersectsTriangle(const Ray& ray, const Triangle& triangle) {
-    const float EPSILON = 1e-6f;
+// // Ray-Triangle Intersection Function
+// bool rayIntersectsTriangle(const Ray& ray, const Triangle& triangle) {
+//     const float EPSILON = 1e-6f;
 
-    // Edges of the triangle
-    Point edge1 = {
-        triangle.vertices[1].x - triangle.vertices[0].x,
-        triangle.vertices[1].y - triangle.vertices[0].y,
-        triangle.vertices[1].z - triangle.vertices[0].z
-    };
-    Point edge2 = {
-        triangle.vertices[2].x - triangle.vertices[0].x,
-        triangle.vertices[2].y - triangle.vertices[0].y,
-        triangle.vertices[2].z - triangle.vertices[0].z
-    };
+//     // Edges of the triangle
+//     Point edge1 = {
+//         triangle.vertices[1].x - triangle.vertices[0].x,
+//         triangle.vertices[1].y - triangle.vertices[0].y,
+//         triangle.vertices[1].z - triangle.vertices[0].z
+//     };
+//     Point edge2 = {
+//         triangle.vertices[2].x - triangle.vertices[0].x,
+//         triangle.vertices[2].y - triangle.vertices[0].y,
+//         triangle.vertices[2].z - triangle.vertices[0].z
+//     };
 
-    // Compute the determinant
-    Point h = {
-        ray.direction.y * edge2.z - ray.direction.z * edge2.y,
-        ray.direction.z * edge2.x - ray.direction.x * edge2.z,
-        ray.direction.x * edge2.y - ray.direction.y * edge2.x
-    };
+//     // Compute the determinant
+//     Point h = {
+//         ray.direction.y * edge2.z - ray.direction.z * edge2.y,
+//         ray.direction.z * edge2.x - ray.direction.x * edge2.z,
+//         ray.direction.x * edge2.y - ray.direction.y * edge2.x
+//     };
 
-    float a = edge1.x * h.x + edge1.y * h.y + edge1.z * h.z;
+//     float a = edge1.x * h.x + edge1.y * h.y + edge1.z * h.z;
 
-    // If determinant is near zero, the ray lies in the plane of the triangle
-    if (std::abs(a) < EPSILON) {
-        return false;
+//     // If determinant is near zero, the ray lies in the plane of the triangle
+//     if (std::abs(a) < EPSILON) {
+//         return false;
+//     }
+
+//     float f = 1.0f / a;
+
+//     // Calculate distance from vertex[0] to ray origin
+//     Point s = {
+//         ray.origin.x - triangle.vertices[0].x,
+//         ray.origin.y - triangle.vertices[0].y,
+//         ray.origin.z - triangle.vertices[0].z
+//     };
+
+//     // Calculate u parameter and test bounds
+//     float u = f * (s.x * h.x + s.y * h.y + s.z * h.z);
+//     if (u < 0.0f || u > 1.0f) {
+//         return false;
+//     }
+
+//     // Prepare to test v parameter
+//     Point q = {
+//         s.y * edge1.z - s.z * edge1.y,
+//         s.z * edge1.x - s.x * edge1.z,
+//         s.x * edge1.y - s.y * edge1.x
+//     };
+
+//     // Calculate v parameter and test bounds
+//     float v = f * (ray.direction.x * q.x + ray.direction.y * q.y + ray.direction.z * q.z);
+//     if (v < 0.0f || u + v > 1.0f) {
+//         return false;
+//     }
+
+//     // Calculate t, ray intersection distance
+//     float t = f * (edge2.x * q.x + edge2.y * q.y + edge2.z * q.z);
+
+//     // Ray intersection occurs if t > EPSILON
+//     return t > EPSILON;
+// }
+
+
+// Initialize Embree Device
+RTCDevice initializeDevice() {
+    RTCDevice device = rtcNewDevice(nullptr);
+    if (!device) {
+        std::cerr << "Error creating Embree device!" << std::endl;
+        exit(1);
     }
-
-    float f = 1.0f / a;
-
-    // Calculate distance from vertex[0] to ray origin
-    Point s = {
-        ray.origin.x - triangle.vertices[0].x,
-        ray.origin.y - triangle.vertices[0].y,
-        ray.origin.z - triangle.vertices[0].z
-    };
-
-    // Calculate u parameter and test bounds
-    float u = f * (s.x * h.x + s.y * h.y + s.z * h.z);
-    if (u < 0.0f || u > 1.0f) {
-        return false;
-    }
-
-    // Prepare to test v parameter
-    Point q = {
-        s.y * edge1.z - s.z * edge1.y,
-        s.z * edge1.x - s.x * edge1.z,
-        s.x * edge1.y - s.y * edge1.x
-    };
-
-    // Calculate v parameter and test bounds
-    float v = f * (ray.direction.x * q.x + ray.direction.y * q.y + ray.direction.z * q.z);
-    if (v < 0.0f || u + v > 1.0f) {
-        return false;
-    }
-
-    // Calculate t, ray intersection distance
-    float t = f * (edge2.x * q.x + edge2.y * q.y + edge2.z * q.z);
-
-    // Ray intersection occurs if t > EPSILON
-    return t > EPSILON;
+    return device;
 }
+
+// Build BVH
+RTCScene buildBVH(RTCDevice device, const std::vector<Triangle>& triangles) {
+    RTCScene scene = rtcNewScene(device);
+
+    RTCGeometry geometry = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_TRIANGLE);
+    auto* vertices = (float*)rtcSetNewGeometryBuffer(geometry, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, sizeof(float) * 3, triangles.size() * 3);
+    auto* indices = (unsigned int*)rtcSetNewGeometryBuffer(geometry, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, sizeof(unsigned int) * 3, triangles.size());
+
+    for (size_t i = 0; i < triangles.size(); ++i) {
+        // Set vertices
+        for (int j = 0; j < 3; ++j) {
+            vertices[i * 9 + j * 3 + 0] = triangles[i].vertices[j].x;
+            vertices[i * 9 + j * 3 + 1] = triangles[i].vertices[j].y;
+            vertices[i * 9 + j * 3 + 2] = triangles[i].vertices[j].z;
+        }
+        // Set indices
+        indices[i * 3 + 0] = i * 3 + 0;
+        indices[i * 3 + 1] = i * 3 + 1;
+        indices[i * 3 + 2] = i * 3 + 2;
+    }
+
+    rtcCommitGeometry(geometry);
+    rtcAttachGeometry(scene, geometry);
+    rtcReleaseGeometry(geometry);
+    rtcCommitScene(scene);
+
+    return scene;
+}
+
+// Ray Intersection Function using BVH
+bool rayIntersectsScene(const RTCScene& scene, const Ray& ray) {
+    struct RTCIntersectContext context;
+    rtcInitIntersectContext(&context);
+
+    RTCRayHit rayHit;
+    rayHit.ray.org_x = ray.origin.x;
+    rayHit.ray.org_y = ray.origin.y;
+    rayHit.ray.org_z = ray.origin.z;
+    rayHit.ray.dir_x = ray.direction.x;
+    rayHit.ray.dir_y = ray.direction.y;
+    rayHit.ray.dir_z = ray.direction.z;
+    rayHit.ray.tnear = 0.0f;
+    rayHit.ray.tfar = std::numeric_limits<float>::infinity();
+    rayHit.ray.mask = -1;
+    rayHit.ray.flags = 0;
+    rayHit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
+
+    rtcIntersect1(scene, &context, &rayHit);
+
+    return rayHit.hit.geomID != RTC_INVALID_GEOMETRY_ID;
+}
+
+
+
 
 int main() {
     const std::string inputFilename = "d:\\pawan\\cpp test\\4recpptest145.stl";
@@ -323,6 +391,18 @@ int main() {
     int outerCount = 0;
     int innerCount = 0;
     std::vector<Triangle> faces;  // Fill with actual data
+     RTCScene scene = buildBVH(device, faces);
+
+    Ray ray = { {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f} }; // Define a ray
+    if (rayIntersectsScene(scene, ray)) {
+        std::cout << "Ray intersects the scene!" << std::endl;
+    } else {
+        std::cout << "No intersection." << std::endl;
+    }
+
+    rtcReleaseScene(scene);
+    rtcReleaseDevice(device);
+
 
     // Get connected components from input file
     auto connectedComponents = getConnectedComponents(inputFilename, faces);
