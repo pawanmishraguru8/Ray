@@ -10,3 +10,6 @@
 [submodule "pycork"]
 	path = pycork
 	url = https://github.com/Ishan-Sahu-01/pycork.git
+[submodule "external/embree"]
+	path = external/embree
+	url = https://github.com/embree/embree.git
