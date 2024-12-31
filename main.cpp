@@ -387,7 +387,7 @@ bool rayIntersectsScene(const RTCScene& scene, const Ray& ray) {
 
 int main() {
     const std::string inputFilename = "d:\\pawan\\cpp test\\4recpptest145.stl";
-    const std::string outputFilename = "d:\\pawan\\cpp test\\4recpptest146.stgit l";
+    const std::string outputFilename = "d:\\pawan\\cpp test\\4recpptest146.stgit git l";
     int outerCount = 0;
     int innerCount = 0;
     std::vector<Triangle> faces;  // Fill with actual data
